@@ -7,7 +7,7 @@ class State:
         self.t = 0  # seconds
         self.node_online = True  # the node starts online
         self.server_online = [True] * N  # servers all start online
-        self.remote_blocks = [False] * N  # no server starts having their block
+        self.remote_blocks = [[False] * N] * N  # no server starts having their block
         self.local_blocks = [True] * N  # flags each locally owned block
         #consts
         self.N = N
@@ -52,13 +52,17 @@ class State:
         # server that doesn't have it (if possible)
         if self.node_online:
             local_idxs = [i for i in range(len(self.local_blocks)) if self.local_blocks[i]]
-            remote_idxs = [i for i in range(len(self.remote_blocks)) if self.remote_blocks[i]]
-            for i in local_idxs:
-                if(i not in remote_idxs and self.server_online[i]):
-                    event = UploadComplete(i)
-                    self.current_upload = event
-                    self.schedule(exp_rv(self.UPLOAD_DURATION), event)
-                    return
+            remotes = []
+            for remote in self.remote_blocks:
+                remotes.append([i for i in range(len(remote)) if remote[i]])
+
+            for remote_idx, remote_server in enumerate(remotes):
+                for i in local_idxs:
+                    if(i not in remote_server and self.server_online[i]):
+                        event = UploadComplete(remote_idx, i)
+                        self.current_upload = event
+                        self.schedule(exp_rv(self.UPLOAD_DURATION), event)
+                        return
 
     def schedule_next_download(self):
         """Schedule the next download, if any."""
@@ -66,7 +70,15 @@ class State:
         # if the node is online, download a remote block the node doesn't
         # have from an online server which has it (if possible)
         if self.node_online:
-            remote_idxs = [i for i in range(len(self.local_blocks)) if self.remote_blocks[i]]
+            rbs = []
+            for i in range(len(self.remote_blocks)):
+                for j in range(len(self.remote_blocks[i])):
+                    if len(rbs) > i:
+                        rbs[i] = self.remote_blocks[j][i] or rbs[i]
+                    else:
+                        rbs.append(self.remote_blocks[j][i])
+
+            remote_idxs = [i for i in range(len(rbs)) if rbs[i]]
             local_idxs = [i for i in range(len(self.remote_blocks)) if self.local_blocks[i]]
             for i in remote_idxs:
                 if(i not in local_idxs and self.server_online[i]):
@@ -79,7 +91,15 @@ class State:
         """Did we lose enough redundancy that we can't recover data?"""
 
         # check if we have at least K blocks saved, either locally or remotely
-        lbs, rbs = self.local_blocks, self.remote_blocks
+        lbs, rbs_array = self.local_blocks, self.remote_blocks
+        rbs = []
+        for i in range(len(rbs_array)):
+            for j in range(len(rbs_array[i])):
+                if len(rbs) > i:
+                    rbs[i] = rbs_array[j][i] or rbs[i]
+                else:
+                    rbs.append(rbs_array[j][i])
+
         blocks_saved = [lb or rb for lb, rb in zip(lbs, rbs)]
         if sum(blocks_saved) < self.K:
             raise GameOver

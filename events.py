@@ -12,13 +12,16 @@ class ServerEvent:
 
         
 class UploadComplete(ServerEvent):
+    def __init__(self, server, block):
+        super().__init__(server)
+        self.block = block
+
     """An upload is completed."""
     def process(self, state):
         if state.current_upload is not self:
-            #print("upload was interrupted")
             # this upload was interrupted, we ignore this event
             return
-        state.remote_blocks[self.server] = True
+        state.remote_blocks[self.server][self.block] = True
         state.schedule_next_upload()
 
         
@@ -27,7 +30,6 @@ class DownloadComplete(ServerEvent):
     
     def process(self, state):
         if state.current_download is not self:
-            #print("Download was interrupted")
             # download interrupted
             return
         lb = state.local_blocks
@@ -117,7 +119,7 @@ class ServerFail(ServerOffline):
     """A server failed and lost its data."""
     
     def process(self, state):
-        state.remote_blocks[self.server] = False
+        state.remote_blocks[self.server] = [False] * state.N
         state.check_game_over()
         state.schedule(exp_rv(state.SERVER_LIFETIME), ServerFail(self.server))
         super().process(state)
