@@ -1,4 +1,3 @@
-from consts import K, N, NODE_UPTIME, NODE_DOWNTIME, NODE_LIFETIME, SERVER_DOWNTIME, SERVER_UPTIME, SERVER_LIFETIME, MAXT, YEAR
 from utils import exp_rv, get_true_len
 from heapq import heappush
 
@@ -33,8 +32,8 @@ class DownloadComplete(ServerEvent):
             return
         lb = state.local_blocks
         lb[self.server] = True
-        if sum(lb) >= K:  # we have enough data to reconstruct all blocks
-            state.local_blocks = [True] * N
+        if sum(lb) >= state.K:  # we have enough data to reconstruct all blocks
+            state.local_blocks = [True] * state.N
         else:
             state.schedule_next_download()
 
@@ -49,9 +48,7 @@ class NodeOnline:
         state.schedule_next_upload()
         state.schedule_next_download()
         # schedule the next offline event
-        state.schedule(exp_rv(NODE_UPTIME), NodeOffline())
-        #raise NotImplementedException
-
+        state.schedule(exp_rv(state.NODE_UPTIME), NodeOffline())
 
 class NodeOffline:
     """Our node went offline."""
@@ -62,7 +59,7 @@ class NodeOffline:
         # cancel current upload and download
         state.current_upload = state.current_download = None
         # schedule the next online event
-        state.schedule(exp_rv(NODE_DOWNTIME), NodeOnline())
+        state.schedule(exp_rv(state.NODE_DOWNTIME), NodeOnline())
     
         
 class NodeFail(NodeOffline):
@@ -70,9 +67,9 @@ class NodeFail(NodeOffline):
     
     def process(self, state):
         # mark all local blocks as lost
-        state.local_blocks = [False] * N
+        state.local_blocks = [False] * state.N
         state.check_game_over()
-        state.schedule(exp_rv(NODE_LIFETIME), NodeFail())
+        state.schedule(exp_rv(state.NODE_LIFETIME), NodeFail())
         super().process(state)
 
         
@@ -84,7 +81,7 @@ class ServerOnline(ServerEvent):
         # mark the server as back online
         state.server_online[server] = True
         # schedule the next server offline event
-        state.schedule(exp_rv(SERVER_UPTIME), ServerOffline(server))
+        state.schedule(exp_rv(state.SERVER_UPTIME), ServerOffline(server))
         # if the node was not uploading/downloading,
         # schedule new uploads/downloads to/from them
         cu = state.current_upload
@@ -93,8 +90,6 @@ class ServerOnline(ServerEvent):
         cd = state.current_download
         if cd is None:
             state.schedule_next_download()
-        #raise NotImplementedException
-
     
 class ServerOffline(ServerEvent):
     # u can implement the possibility to schedule another upload and download
@@ -105,7 +100,7 @@ class ServerOffline(ServerEvent):
         # mark the server as offline
         state.server_online[server] = False
         # schedule the next server online event
-        state.schedule(exp_rv(SERVER_DOWNTIME), ServerOnline(server))
+        state.schedule(exp_rv(state.SERVER_DOWNTIME), ServerOnline(server))
 
         # interrupt any current uploads/downloads to this server
         
@@ -124,12 +119,12 @@ class ServerFail(ServerOffline):
     def process(self, state):
         state.remote_blocks[self.server] = False
         state.check_game_over()
-        state.schedule(exp_rv(SERVER_LIFETIME), ServerFail(self.server))
+        state.schedule(exp_rv(state.SERVER_LIFETIME), ServerFail(self.server))
         super().process(state)
 
 
 class StatisticsCollector:
-    def process(self, state):
+    def process(self, state, YEAR):
         state.plot_time.append(state.t / YEAR)
         state.plot_servers.append(get_true_len(state.server_online))
         state.plot_locals.append(get_true_len(state.local_blocks))
